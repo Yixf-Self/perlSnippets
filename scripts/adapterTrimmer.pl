@@ -173,7 +173,7 @@ while (not eof($in)){
 	(($fqHeader1, $fqseq, undef, $fqqual) = &read_fastq(*$in))if($format eq 'fastq');
 	($fqHeader1, $fqseq) = &read_fasta(*$in)if($format eq 'fasta');
 	#			print STDERR join('	',($fqHeader1, $fqseq))."\n";
-	$seqstats{'1_sequence_count'}++;
+	$seqstats{'ReadsInInput'}++;
 	
 	my $bool = 0;
 	my $i = 0;
@@ -189,7 +189,7 @@ while (not eof($in)){
 	}
 	#count if untrimmed because no adapter found
 	if($index < 0){
-		$seqstats{'2_sequence_untrimmed'}++;
+		$seqstats{'ReadsWithAdapterNotFound'}++;
 	}
 
 	
@@ -206,17 +206,17 @@ while (not eof($in)){
 				$fqqual = 'B';
 			}
 		#}
-		$seqstats{'3_sequence_adapter_only'}++;
+		$seqstats{'ReadsOmittedOnlyAdapter'}++;
 		
 	}elsif($cmdOptions{'A'}){#start trim
-		$seqstats{'5_trimmed'}++;
+		#$seqstats{'ReadsWithAdapterTrimmed'}++;
 		$fqseq = substr($fqseq,($index+$adapter_len));
 		if(defined($fqqual)){
 			$fqqual = substr($fqqual,($index+$adapter_len));
 		}
 			
 	}elsif($cmdOptions{'B'}){#end trim 
-		$seqstats{'5_trimmed'}++;
+		#$seqstats{'ReadsWithAdapterTrimmed'}++;
 		$fqseq = substr($fqseq,0,$index);
 		if(defined($fqqual)){
 			$fqqual = substr($fqqual,0,$index);
@@ -224,12 +224,22 @@ while (not eof($in)){
 	}
 	
 	#select for min/max size
-	(($fqHeader1, $fqseq, $fqqual) = &selMaxLen($fqHeader1, $fqseq, $fqqual, $cmdOptions{'l'}))if($cmdOptions{'l'} && $fqseq ne 'N');
-	(($fqHeader1, $fqseq, $fqqual) = &selMinLen($fqHeader1, $fqseq, $fqqual, $cmdOptions{'s'}))if($cmdOptions{'s'} && $fqseq ne 'N');
+	
+	my $tmp = 0;
+	
+	(($fqHeader1, $fqseq, $fqqual,$tmp) = &selectMaxLen($fqHeader1, $fqseq, $fqqual, $cmdOptions{'l'}))if($cmdOptions{'l'} && $fqseq ne 'N');
+	
+	$seqstats{'ReadsWithTrimmedMaxLen'}+=$tmp;
+	
+	
+	(($fqHeader1, $fqseq, $fqqual,$tmp) = &selectMinLen($fqHeader1, $fqseq, $fqqual, $cmdOptions{'s'}))if($cmdOptions{'s'} && $fqseq ne 'N');
+	
+	$seqstats{'ReadsOmittedMinLen'}+=$tmp;
+	
 	#remove N containing 
 	if($cmdOptions{'N'}){
 		if($fqseq =~ /[nN]/ && $fqseq ne 'N'){
-			$seqstats{'4_N_contianing'}++;
+			$seqstats{'ReadsOmittedNContaining'}++;
 			$fqseq = 'N';
 			$fqqual = 'B';
 		}
@@ -243,6 +253,7 @@ while (not eof($in)){
 			if($cmdOptions{'U'} && $index < 0){
 				die "cannot logically keep PE structure intact in -U FILE! remove -p or specify -u istead of -U FILE\n$!";
 			}else{
+				$seqstats{'ReadsInOutput'}++;
 				if(defined($fqqual)){
 					print {$out} "\@$fqHeader1\n$fqseq\n+$fqHeader1\n$fqqual\n";
 				}else{
@@ -250,6 +261,7 @@ while (not eof($in)){
 				}
 			}	
 		}else{
+			$seqstats{'ReadsInOutput'}++;
 			if(defined($fqqual) ){
 					print {$out} "\@$fqHeader1\n$fqseq\n+$fqHeader1\n$fqqual\n";
 			}else{
@@ -260,18 +272,21 @@ while (not eof($in)){
 	}elsif($fqseq ne 'N'){
 		if($cmdOptions{'u'}){
 			if($cmdOptions{'U'} && $index < 0){
+				$seqstats{'ReadsInOutput'}++;
 				if(defined($fqqual)){
 					print {$outU} "\@$fqHeader1\n$fqseq\n+$fqHeader1\n$fqqual\n";
 				}else{
 					print {$outU} "\>$fqHeader1\n$fqseq\n";
 				}
 			}elsif($cmdOptions{'U'} && $index >= 0){
+				$seqstats{'ReadsInOutput'}++;
 				if(defined($fqqual)){
 					print {$out} "\@$fqHeader1\n$fqseq\n+$fqHeader1\n$fqqual\n";
 				}else{
 					print {$out} "\>$fqHeader1\n$fqseq\n";
 				}
 			}else{
+				$seqstats{'ReadsInOutput'}++;
 				if(defined($fqqual)){
 					print {$out} "\@$fqHeader1\n$fqseq\n+$fqHeader1\n$fqqual\n";
 				}else{
@@ -279,6 +294,7 @@ while (not eof($in)){
 				}
 			}	
 		}elsif($index > 0){
+			$seqstats{'ReadsInOutput'}++;
 			if(defined($fqqual)){
 				print {$out} "\@$fqHeader1\n$fqseq\n+$fqHeader1\n$fqqual\n";
 			}else{
@@ -311,8 +327,8 @@ sub read_fastq {
 	$read_fqHeader2 = substr($read_fqHeader2, 1);
 	my $read_fqqual = <$fileh>;
 	chomp($read_fqqual);
-	if ($read_fqHeader1 ne $read_fqHeader2){
-		print STDERR "$0 header error: $read_fqHeader1 doesn't match $read_fqHeader2\n";
+	if ($read_fqHeader1 ne $read_fqHeader2 && $read_fqHeader2 ne ''){
+		warn "$0 header error: '$read_fqHeader1' doesn't match '$read_fqHeader2'\n";
 		exit(0);
 	}
 	return($read_fqHeader1, $read_fqseq, $read_fqHeader2, $read_fqqual);
@@ -414,11 +430,11 @@ sub selectMinLen{
 	my $minLen;
 	($fqHeader1, $fqseq, $fqqual, $minLen) = @_;
 	if($fqqual){
-		return($fqHeader1,'N','B')if(length($fqseq) < $minLen);
-		return($fqHeader1,$fqseq,$fqqual);
+		return($fqHeader1,'N','B',1)if(length($fqseq) < $minLen);
+		return($fqHeader1,$fqseq,$fqqual,0);
 	}else{
-		return($fqHeader1,'N')if(length($fqseq) < $minLen);
-		return($fqHeader1,$fqseq);
+		return($fqHeader1,'N',undef,1)if(length($fqseq) < $minLen);
+		return($fqHeader1,$fqseq,undef,0);
 	}
 }
 sub selectMaxLen{
@@ -431,10 +447,10 @@ sub selectMaxLen{
 	my $maxLen;
 	($fqHeader1, $fqseq, $fqqual, $maxLen) = @_;
 	if($fqqual){
-		return($fqHeader1,substr($fqseq,0,$maxLen),substr($fqqual,0,$maxLen))if(length($fqseq) > $maxLen);
-		return($fqHeader1,$fqseq,$fqqual);
+		return($fqHeader1,substr($fqseq,0,$maxLen),substr($fqqual,0,$maxLen),1)if(length($fqseq) > $maxLen);
+		return($fqHeader1,$fqseq,$fqqual,0);
 	}else{
-		return($fqHeader1,substr($fqseq,0,$maxLen))if(length($fqseq) > $maxLen);
-		return($fqHeader1,$fqseq);
+		return($fqHeader1,substr($fqseq,0,$maxLen),undef,1)if(length($fqseq) > $maxLen);
+		return($fqHeader1,$fqseq,undef,0);
 	} 
 }
