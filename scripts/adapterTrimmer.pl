@@ -208,14 +208,14 @@ while (not eof($in)){
 		#}
 		$seqstats{'ReadsOmittedOnlyAdapter'}++;
 		
-	}elsif($cmdOptions{'A'}){#start trim
+	}elsif($cmdOptions{'A'} && $index > 0){#start trim
 		#$seqstats{'ReadsWithAdapterTrimmed'}++;
 		$fqseq = substr($fqseq,($index+$adapter_len));
 		if(defined($fqqual)){
 			$fqqual = substr($fqqual,($index+$adapter_len));
 		}
 			
-	}elsif($cmdOptions{'B'}){#end trim 
+	}elsif($cmdOptions{'B'} && $index > 0){#end trim 
 		#$seqstats{'ReadsWithAdapterTrimmed'}++;
 		$fqseq = substr($fqseq,0,$index);
 		if(defined($fqqual)){
